@@ -12,6 +12,7 @@
       color: #1a202c;
       min-height: 100vh;
       font-size: 16px;
+      -webkit-text-size-adjust: 100%;
     }
     .header {
       background: #1b4f2a;
@@ -44,7 +45,7 @@
       line-height: 1.55;
       color: #5a3e00;
     }
-    .aviso strong { display: block; margin-bottom: 4px; font-size: 0.95rem; }
+    .aviso strong { font-size: 0.95rem; }
     .form-card {
       background: white;
       margin: 0 16px 16px;
@@ -161,12 +162,6 @@
     }
     .btn-submit:active { background: #154021; }
     .btn-submit:disabled { background: #a0aec0; cursor: not-allowed; }
-    .loading {
-      text-align: center;
-      padding: 60px 20px;
-      color: #718096;
-      font-size: 1rem;
-    }
     .success {
       display: none;
       background: #c6f6d5;
@@ -199,10 +194,9 @@
 </div>
 
 <div class="wrap">
-  <div id="loadingMsg" class="loading">Cargando formulario…</div>
   <div id="errorMsg" class="error-msg"></div>
 
-  <div id="formContainer" style="display:none">
+  <div id="formContainer">
     <div class="intro">
       <p>Estimado/a vecino/a:</p>
       <p>Con el objetivo de mejorar la calidad de vida en nuestro barrio, queremos conocer las principales inquietudes que considerás importantes. Por favor, completá este formulario indicando <strong>hasta cuatro problemáticas</strong> que creés que debemos abordar, organizándolas por orden de prioridad.</p>
@@ -212,8 +206,7 @@
     </div>
 
     <div class="aviso">
-      <strong>⚠️ Recordá</strong>
-      Solo temas de <strong>Barrio Gaboto</strong>. No incluyas temas generales de Pueblos del Plata (accesos principales, obras del consorcio, etc.). Al menos completá la Prioridad 1; las demás son opcionales.
+      <strong>⚠️ Recordá:</strong> Solo temas de <strong>Barrio Gaboto</strong>. No incluyas temas generales de Pueblos del Plata (accesos principales, obras del consorcio, etc.). Al menos completá la Prioridad 1; las demás son opcionales.
     </div>
 
     <div class="form-card">
@@ -248,33 +241,13 @@
 </div>
 
 <script>
-  var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbylskYks1-F5IiSJgQGuVYUQ0y_gbO62cHlTHXGT_ferlRARioh0Ot0pxWA0stKgXSsBA/exec";
-  var CATEGORIAS = {};
+  // Categorías inyectadas directamente por el servidor — sin fetch ni JSONP
+  var CATEGORIAS = __CATEGORIAS__;
 
-  // ---- JSONP: evita bloqueo CORS ----
-  function jsonp(url, callbackName, fn) {
-    window[callbackName] = function(data) {
-      delete window[callbackName];
-      document.getElementById("jsonpScript") && document.getElementById("jsonpScript").remove();
-      fn(data);
-    };
-    var s = document.createElement("script");
-    s.id = "jsonpScript";
-    s.src = url + "&callback=" + callbackName;
-    document.body.appendChild(s);
-  }
+  var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbylskYks1-F5IiSJgQGuVYUQ0y_gbO62cHlTHXGT_ferlRARioh0Ot0pxWA0stKgXSsBA/exec";
 
   window.onload = function() {
-    jsonp(SCRIPT_URL + "?action=getCategorias", "cbCategorias", function(res) {
-      if (!res || !res.ok) {
-        document.getElementById("loadingMsg").innerHTML = "❌ Error al cargar. Recargá la página.";
-        return;
-      }
-      CATEGORIAS = res.data;
-      renderPrioridades();
-      document.getElementById("loadingMsg").style.display = "none";
-      document.getElementById("formContainer").style.display = "block";
-    });
+    renderPrioridades();
   };
 
   function renderPrioridades() {
@@ -327,15 +300,15 @@
 
   function actualizarSubcat(num) {
     var cat = document.getElementById("cat" + num).value;
-    var selectSub = document.getElementById("sub" + num);
+    var sel = document.getElementById("sub" + num);
     if (!cat) {
-      selectSub.disabled = true;
-      selectSub.innerHTML = '<option value="">— Primero elegí una categoría —</option>';
+      sel.disabled = true;
+      sel.innerHTML = '<option value="">— Primero elegí una categoría —</option>';
       return;
     }
     var subcats = CATEGORIAS[cat] || [];
-    selectSub.disabled = false;
-    selectSub.innerHTML = '<option value="">— Elegir subcategoría —</option>' +
+    sel.disabled = false;
+    sel.innerHTML = '<option value="">— Elegir subcategoría —</option>' +
       subcats.map(function(s) {
         return '<option value="' + escHtml(s) + '">' + escHtml(s) + '</option>';
       }).join('');
@@ -345,17 +318,14 @@
     var lote   = document.getElementById("lote").value.trim();
     var nombre = document.getElementById("nombre").value.trim();
     if (!lote || !nombre) {
-      mostrarError("Por favor completá tu número de lote y nombre antes de continuar.");
-      return;
+      mostrarError("Por favor completá tu número de lote y nombre."); return;
     }
     if (!document.getElementById("cat1").value || !document.getElementById("sub1").value) {
-      mostrarError("La Prioridad 1 es obligatoria. Elegí una categoría y subcategoría.");
-      return;
+      mostrarError("La Prioridad 1 es obligatoria. Elegí categoría y subcategoría."); return;
     }
     for (var i = 2; i <= 4; i++) {
       if (document.getElementById("cat" + i).value && !document.getElementById("sub" + i).value) {
-        mostrarError("Elegiste una categoría en la Prioridad " + i + " pero falta la subcategoría.");
-        return;
+        mostrarError("Elegiste categoría en Prioridad " + i + " pero falta la subcategoría."); return;
       }
     }
 
@@ -371,27 +341,34 @@
       p4cat: document.getElementById("cat4").value, p4sub: document.getElementById("sub4").value, p4com: document.getElementById("com4").value
     };
 
-    // Para el envío (POST) usamos un form oculto + JSONP de confirmación
-    // Apps Script no acepta POST cross-origin, así que enviamos via GET con datos codificados
-    var params = "?action=guardar&callback=cbGuardar&datos=" + encodeURIComponent(JSON.stringify(datos));
-    jsonp(SCRIPT_URL + params, "cbGuardar", function(res) {
-      if (res && res.ok) {
-        document.getElementById("formContainer").style.display = "none";
-        document.getElementById("btnEnviar").style.display = "none";
-        document.getElementById("successMsg").style.display = "block";
-        window.scrollTo(0, 0);
-      } else {
-        document.getElementById("btnEnviar").disabled = false;
-        document.getElementById("btnEnviar").textContent = "Enviar respuesta";
-        mostrarError("Hubo un error al enviar. Intentá de nuevo en unos segundos.");
-      }
-    });
+    // Usar google.script.run si está disponible (Apps Script), sino fetch
+    if (typeof google !== "undefined" && google.script) {
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onError)
+        .guardarRespuesta(datos);
+    } else {
+      fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify(datos) })
+        .then(function(r) { return r.json(); })
+        .then(function(res) { if (res.ok) onSuccess(); else onError(); })
+        .catch(onError);
+    }
   }
 
+  function onSuccess() {
+    document.getElementById("formContainer").style.display = "none";
+    document.getElementById("btnEnviar").style.display = "none";
+    document.getElementById("successMsg").style.display = "block";
+    window.scrollTo(0, 0);
+  }
+  function onError() {
+    document.getElementById("btnEnviar").disabled = false;
+    document.getElementById("btnEnviar").textContent = "Enviar respuesta";
+    mostrarError("Hubo un error al enviar. Intentá de nuevo.");
+  }
   function mostrarError(msg) {
     ["errorMsg","errorBottom"].forEach(function(id) {
-      var el = document.getElementById(id);
-      el.textContent = msg; el.style.display = "block";
+      var el = document.getElementById(id); el.textContent = msg; el.style.display = "block";
     });
     window.scrollTo(0, 0);
   }
